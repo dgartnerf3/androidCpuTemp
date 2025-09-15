@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">AiPlayground</string>
+    <string name="scan_connect"><![CDATA[Scan & Connect]]></string>
+    <string name="type_message">Type message</string>
+    <string name="send">Send</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="log">Log:</string>
+</resources>
