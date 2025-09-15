@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">AiPlayground</string>
+    <string name="app_name">cpuTemp</string>
     <string name="scan_connect"><![CDATA[Scan & Connect]]></string>
     <string name="type_message">Type message</string>
     <string name="send">Send</string>

@@ -1,4 +1,4 @@
-package com.example.aiplayground
+package com.example.cpuTemp
 
 import org.junit.Test
 

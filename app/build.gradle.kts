@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.aiplayground"
+    namespace = "com.example.cpuTemp"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.aiplayground"
+        applicationId = "com.example.cpuTemp"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

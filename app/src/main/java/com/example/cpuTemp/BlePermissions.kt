@@ -1,10 +1,9 @@
-package com.example.aiplayground
+package com.example.cpuTemp
 
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 
 object BlePermissions {

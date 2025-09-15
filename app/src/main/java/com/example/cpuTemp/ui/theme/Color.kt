@@ -1,4 +1,4 @@
-package com.example.aiplayground.ui.theme
+package com.example.cpuTemp.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
