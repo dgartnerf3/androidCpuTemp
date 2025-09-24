@@ -46,7 +46,29 @@ class MainActivity : ComponentActivity() {
             onLog = { appendLog(it) }
             onConnected = { appendLog("Connected") }
             onDisconnected = { appendLog("Disconnected") }
-            onStringReceived = { s -> appendLog("RX: $s") }
+            onStringReceived = { raw ->
+                val s = raw.trim()
+
+                // Heuristics:
+                //  - "C" or "F" -> unit read result
+                //  - "<number>[.<number>] [C|F]" -> temperature (e.g., "52.3 C")
+                runOnUiThread {
+                    when {
+                        s.equals("c", ignoreCase = true) || s.equals("f", ignoreCase = true) -> {
+                            // put the unit into your existing EditText for units
+                            findViewById<android.widget.EditText>(R.id.unitText).setText(s.uppercase())
+                        }
+                        Regex("""^[+-]?\d+(?:\.\d+)?\s*[cCfF]$""").matches(s) -> {
+                            // show the temperature string in your temperature TextView
+                            findViewById<android.widget.TextView>(R.id.temperatureText).text = s.replace("\\s+".toRegex(), " ")
+                        }
+                        else -> {
+                            // fallback: still log unexpected payloads
+                            appendLog("Unrecognized payload: '$s'")
+                        }
+                    }
+                }
+            }
             onDeviceFound = { r -> handleScanResult(r) }
         }
 

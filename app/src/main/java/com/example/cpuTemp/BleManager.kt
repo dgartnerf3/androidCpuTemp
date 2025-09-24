@@ -5,6 +5,9 @@ import android.bluetooth.*
 import android.bluetooth.le.*
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.ParcelUuid
 import android.util.Log
 import java.nio.charset.Charset
 import java.util.*
@@ -18,10 +21,14 @@ class BleManager(
     private val adapter: BluetoothAdapter? get() = bluetoothManager.adapter
     private val scanner: BluetoothLeScanner? get() = adapter?.bluetoothLeScanner
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     private var gatt: BluetoothGatt? = null
     private var unitChar: BluetoothGattCharacteristic? = null
     private var tempChar: BluetoothGattCharacteristic? = null
     private var scanning = false
+    private var connectingOrConnected = false;
+    private var svcDiscoveryScheduled = false
 
     var onLog: (String) -> Unit = { Log.d("BleManager", it) }
     var onConnected: () -> Unit = {}
@@ -33,7 +40,7 @@ class BleManager(
     private fun scanFilters(): List<ScanFilter> {
         val builder = ScanFilter.Builder()
         // Filter by service UUID to reduce noise
-        // builder.setServiceUuid(ParcelUuid(BleUuids.SCAN_FILTER_SERVICE))
+        //builder.setServiceUuid(ParcelUuid(BleUuids.SCAN_FILTER_SERVICE))
         if (!targetName.isNullOrBlank()) {
             // Note: Android framework lacks direct name filter; we’ll check in callback
         }
@@ -68,10 +75,19 @@ class BleManager(
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val name = result.scanRecord?.deviceName ?: result.device.name
+            // If a targetName was provided, only consider matches
             if (!targetName.isNullOrBlank()
                 && !name.orEmpty().contains(targetName!!, ignoreCase = true)
             ) return
-            onDeviceFound(result)  // REPORT device
+
+            onDeviceFound(result)  // still report for UI/list, RSSI, etc.
+
+            // Auto-connect once when we see the target
+            if (!connectingOrConnected) {
+                connectingOrConnected = true
+                onLog("Auto-connecting to ${name ?: "(no name)"} at ${result.device.address}…")
+                connect(result.device)
+            }
         }
         override fun onScanFailed(errorCode: Int) { onLog("Scan failed: $errorCode") }
     }
@@ -89,6 +105,16 @@ class BleManager(
 
     private val gattCallback = object : BluetoothGattCallback() {
 
+        private fun scheduleServiceDiscovery(g: BluetoothGatt, delayMs: Long = 500L) {
+            if (svcDiscoveryScheduled) return
+            svcDiscoveryScheduled = true
+            mainHandler.postDelayed({
+                val started = g.discoverServices()
+                onLog("discoverServices() started=$started")
+            }, delayMs)
+        }
+
+        @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 onLog("GATT error: $status")
@@ -98,11 +124,14 @@ class BleManager(
                 onConnected()
                 // Request larger MTU for string payloads
                 g.requestMtu(247)
-                g.discoverServices()
+                scheduleServiceDiscovery(g, delayMs = 10000L)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                onLog("Disconnected")
-                onDisconnected()
-                cleanup()
+                if(connectingOrConnected) {
+                    onLog("Disconnected")
+                    onDisconnected()
+                    cleanup()
+                    connectingOrConnected = false
+                }
             }
         }
 
@@ -130,8 +159,6 @@ class BleManager(
             }
             if (unitChar == null) {
                 onLog("Unit characteristic not found: ${BleUuids.UNIT_CHAR_UUID}")
-            } else {
-                enableNotifications(g, unitChar!!)
             }
         }
 
@@ -145,16 +172,34 @@ class BleManager(
         override fun onCharacteristicWrite(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
             onLog("Write ${if (status == BluetoothGatt.GATT_SUCCESS) "OK" else "failed($status)"}")
         }
+
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                onLog("Read failed: $status")
+                return
+            }
+            val s = characteristic.value?.let { String(it, Charsets.UTF_8) } ?: ""
+
+            when (characteristic.uuid) {
+                BleUuids.TEMP_CHAR_UUID,
+                BleUuids.UNIT_CHAR_UUID -> onStringReceived(s)   // <-- send both to UI handler
+                else -> onLog("Read unknown char ${characteristic.uuid}: $s")
+            }
+        }
     }
 
     @SuppressLint("MissingPermission")
     private fun enableNotifications(g: BluetoothGatt, ch: BluetoothGattCharacteristic) {
         val ok = g.setCharacteristicNotification(ch, true)
-        onLog("Enable notifications: $ok")
         val cccd = ch.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
         if (cccd != null) {
             cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
             g.writeDescriptor(cccd)
+            onLog("Enable notifications -- $cccd: $ok")
         }
     }
 
